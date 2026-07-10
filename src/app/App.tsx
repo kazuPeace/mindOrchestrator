@@ -9,7 +9,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { Dialog } from '../components/Dialog'
-import { GoogleDriveSettings } from '../components/GoogleDriveSettings'
 import { MindNode } from '../components/MindNode'
 import { Toolbar } from '../components/Toolbar'
 import { hasChildren } from '../domain/mindmap'
@@ -17,17 +16,12 @@ import { toFlowEdges, toFlowNodes } from '../domain/flowAdapter'
 import { parseDocument, safeFileName } from '../domain/validation'
 import {
   deleteSetting,
-  getSetting,
   listRecords,
   loadLastRecord,
   saveRecord,
   setLastDocument,
-  setSetting,
 } from '../infrastructure/database'
 import {
-  authenticate,
-  configureGoogle,
-  getGoogleClientId,
   listDriveFiles,
   openDriveFile,
   saveToDrive,
@@ -63,9 +57,6 @@ export function App() {
   const [recent, setRecent] = useState<DocumentRecord[]>([])
   const [driveFiles, setDriveFiles] = useState<DriveFile[] | null>(null)
   const [driveBusy, setDriveBusy] = useState(false)
-  const [driveSettingsOpen, setDriveSettingsOpen] = useState(false)
-  const [googleClientId, setGoogleClientId] = useState(getGoogleClientId)
-  const [googleConnected, setGoogleConnected] = useState(false)
   const [driveState, setDriveState] = useState<
     'idle' | 'saving' | 'saved' | 'error'
   >('idle')
@@ -81,15 +72,9 @@ export function App() {
     document.documentElement.dataset.theme = theme
   }, [theme])
   useEffect(() => {
-    getSetting('googleClientId')
-      .then((savedClientId) => {
-        if (!savedClientId) return
-        configureGoogle(savedClientId)
-        setGoogleClientId(savedClientId)
-      })
-      .catch((error) =>
-        console.error('Google設定を読み込めませんでした。', error),
-      )
+    deleteSetting('googleClientId').catch((error) =>
+      console.error('以前のGoogle設定を削除できませんでした。', error),
+    )
   }, [])
   useEffect(() => {
     loadLastRecord()
@@ -218,10 +203,6 @@ export function App() {
   }, [store, requestDelete])
 
   const saveDrive = async (asCopy = false) => {
-    if (!getGoogleClientId()) {
-      setDriveSettingsOpen(true)
-      return
-    }
     if (driveBusy) return
     setDriveBusy(true)
     setDriveState('saving')
@@ -245,10 +226,6 @@ export function App() {
     }
   }
   const showDriveFiles = async () => {
-    if (!getGoogleClientId()) {
-      setDriveSettingsOpen(true)
-      return
-    }
     setDriveBusy(true)
     store.setError(null)
     try {
@@ -263,37 +240,6 @@ export function App() {
     } finally {
       setDriveBusy(false)
     }
-  }
-  const saveGoogleSettings = async (clientId: string) => {
-    await setSetting('googleClientId', clientId)
-    configureGoogle(clientId)
-    setGoogleClientId(clientId)
-    setGoogleConnected(false)
-    store.setError(null)
-  }
-  const connectGoogle = async () => {
-    setDriveBusy(true)
-    store.setError(null)
-    try {
-      await authenticate()
-      setGoogleConnected(true)
-    } catch (error) {
-      console.error(error)
-      setGoogleConnected(false)
-      store.setError(
-        error instanceof Error
-          ? error.message
-          : 'Googleへ接続できませんでした。',
-      )
-    } finally {
-      setDriveBusy(false)
-    }
-  }
-  const removeGoogleSettings = async () => {
-    await deleteSetting('googleClientId')
-    configureGoogle('')
-    setGoogleClientId(getGoogleClientId())
-    setGoogleConnected(false)
   }
   const loadDrive = async (id: string) => {
     try {
@@ -386,7 +332,6 @@ export function App() {
         onUndo={store.undo}
         onRedo={store.redo}
         onDriveSave={() => saveDrive()}
-        onDriveSettings={() => setDriveSettingsOpen(true)}
         onFileMenu={() => setMenu({ type: 'file', x: innerWidth - 330, y: 60 })}
         onViewMenu={() => setMenu({ type: 'view', x: innerWidth - 240, y: 60 })}
         onTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')}
@@ -466,9 +411,6 @@ export function App() {
               <hr />
               <button onClick={showDriveFiles} disabled={driveBusy}>
                 Driveから開く
-              </button>
-              <button onClick={() => setDriveSettingsOpen(true)}>
-                Google Drive設定
               </button>
               <button onClick={() => saveDrive()}>Driveに保存</button>
               <button onClick={() => saveDrive(true)}>Driveへ別名で保存</button>
@@ -562,17 +504,6 @@ export function App() {
             ))}
           </div>
         </Dialog>
-      )}
-      {driveSettingsOpen && (
-        <GoogleDriveSettings
-          initialClientId={googleClientId}
-          connected={googleConnected}
-          busy={driveBusy}
-          onSave={saveGoogleSettings}
-          onConnect={connectGoogle}
-          onRemove={removeGoogleSettings}
-          onClose={() => setDriveSettingsOpen(false)}
-        />
       )}
       {driveFiles && (
         <Dialog title="Driveから開く" onClose={() => setDriveFiles(null)}>

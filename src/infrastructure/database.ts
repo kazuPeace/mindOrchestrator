@@ -39,12 +39,6 @@ export async function listRecords() {
 export async function setLastDocument(id: string) {
   return (await db()).put('settings', id, 'lastDocumentId')
 }
-export async function getSetting(key: string) {
-  return (await db()).get('settings', key)
-}
-export async function setSetting(key: string, value: string) {
-  return (await db()).put('settings', value, key)
-}
 export async function deleteSetting(key: string) {
   return (await db()).delete('settings', key)
 }

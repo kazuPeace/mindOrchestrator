@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { MindNode } from './MindNode'
 import { Toolbar } from './Toolbar'
 import { Dialog } from './Dialog'
-import { GoogleDriveSettings } from './GoogleDriveSettings'
 import { createDocument } from '../domain/mindmap'
 import { useEditorStore } from '../stores/editorStore'
 
@@ -92,7 +91,6 @@ describe('editor components', () => {
       onUndo: vi.fn(),
       onRedo: vi.fn(),
       onDriveSave: vi.fn(),
-      onDriveSettings: vi.fn(),
       onFileMenu: vi.fn(),
       onViewMenu: vi.fn(),
       onTheme: vi.fn(),
@@ -101,6 +99,16 @@ describe('editor components', () => {
     expect(screen.getByRole('status')).toHaveTextContent('ローカル保存済み')
     rerender(<Toolbar {...props} offline />)
     expect(screen.getByRole('status')).toHaveTextContent('オフライン')
+    const parentClick = vi.fn()
+    const { unmount } = render(
+      <div onClick={parentClick}>
+        <Toolbar {...props} />
+      </div>,
+    )
+    fireEvent.click(screen.getAllByRole('button', { name: 'ファイル' }).at(-1)!)
+    expect(props.onFileMenu).toHaveBeenCalled()
+    expect(parentClick).not.toHaveBeenCalled()
+    unmount()
   })
   it('renders an accessible deletion dialog', () => {
     render(
@@ -112,33 +120,5 @@ describe('editor components', () => {
     expect(
       screen.getByRole('button', { name: 'すべて削除' }),
     ).toBeInTheDocument()
-  })
-  it('validates and saves Google Drive settings from the GUI', async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined)
-    render(
-      <GoogleDriveSettings
-        initialClientId=""
-        connected={false}
-        busy={false}
-        onSave={onSave}
-        onConnect={vi.fn()}
-        onRemove={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    )
-    fireEvent.change(screen.getByLabelText('OAuth Client ID'), {
-      target: { value: 'invalid' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '設定を保存' }))
-    expect(
-      await screen.findByText(/ウェブアプリケーション用/),
-    ).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('OAuth Client ID'), {
-      target: { value: '123-example.apps.googleusercontent.com' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '設定を保存' }))
-    expect(onSave).toHaveBeenCalledWith(
-      '123-example.apps.googleusercontent.com',
-    )
   })
 })

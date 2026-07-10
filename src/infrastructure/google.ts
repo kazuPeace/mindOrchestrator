@@ -23,16 +23,6 @@ type DriveFile = { id: string; name: string; modifiedTime: string }
 
 let accessToken: string | null = null
 let scriptPromise: Promise<void> | null = null
-let configuredClientId = ''
-
-export function configureGoogle(clientId: string) {
-  configuredClientId = clientId.trim()
-  accessToken = null
-}
-
-export function getGoogleClientId() {
-  return configuredClientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
-}
 
 function loadIdentityScript() {
   if (window.google?.accounts?.oauth2) return Promise.resolve()
@@ -52,7 +42,7 @@ function loadIdentityScript() {
 export async function authenticate(): Promise<string> {
   if (!navigator.onLine)
     throw new Error('オフラインです。ローカル保存は継続されます。')
-  const clientId = getGoogleClientId()
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
   if (!clientId) throw new Error('Google OAuth Client IDが設定されていません。')
   await loadIdentityScript()
   return new Promise((resolve, reject) => {

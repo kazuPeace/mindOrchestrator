@@ -12,7 +12,6 @@ Mind Orchestrator は、PC・タブレットで考えを自由に配置するマ
 - IndexedDBへの500msデバウンス自動保存と直前マップの復元
 - `.morch` JSONファイルの入出力
 - Google Identity Servicesと`drive.file`によるDrive保存・更新・一覧読込・競合検知
-- アプリ内の「Drive設定」からOAuth Client IDを登録・接続（再ビルド不要）
 - PWAインストール、静的アセットのキャッシュ、オフライン編集、更新通知
 - OS設定連動のライト／ダークテーマと手動切替
 
@@ -67,7 +66,7 @@ Service Workerは本番ビルドで有効になります。`npm run build && npm
 4. OAuth同意画面を設定し、アプリ名、サポートメール、対象ユーザーを登録します。テスト公開中は利用者をテストユーザーへ追加します。
 5. OAuthクライアントIDで「ウェブ アプリケーション」を作成します。クライアントシークレットは使用しません。
 6. Authorized JavaScript originsに開発用`http://localhost:5173`と本番用`https://pearth.wpx.jp`を追加します。originには`/morc/`を含めません。
-7. アプリの「Drive設定」へClient IDを入力します。開発時は`.env.example`を`.env`へコピーする方法も利用できます。
+7. リポジトリ直下に`.env.local`（開発用）または`.env.production.local`（本番ビルド用）を作成し、Client IDを設定します。
 
 ```dotenv
 VITE_GOOGLE_CLIENT_ID=123456789-example.apps.googleusercontent.com
@@ -75,20 +74,33 @@ VITE_GOOGLE_API_KEY=
 VITE_GOOGLE_APP_ID=
 ```
 
-現MVPの一覧方式ではClient IDだけが必須です。Client IDは「Drive設定」からブラウザのIndexedDBへ保存でき、保存後に「Googleへ接続」を押すとOAuth画面が開きます。API KeyとApp IDはPicker対応拡張用に予約しています。OAuth scopeは、アプリが作成したファイルとユーザーが明示的に許可したファイルだけを扱う`https://www.googleapis.com/auth/drive.file`です。Drive全体を読むスコープは要求しません。
+現MVPの一覧方式ではClient IDだけが必須です。設定値をUIやIndexedDBへ保存せず、Viteのビルド時環境変数から読み込みます。API KeyとApp IDはPicker対応拡張用に予約しています。OAuth scopeは、アプリが作成したファイルとユーザーが明示的に許可したファイルだけを扱う`https://www.googleapis.com/auth/drive.file`です。Drive全体を読むスコープは要求しません。
+
+本番用設定ファイルは次の場所です。このファイルは`.gitignore`対象であり、GitHubには追加されません。
+
+```text
+/Users/kazuma/Documents/development/individuals/mindOrchestrator/.env.production.local
+```
+
+```dotenv
+VITE_GOOGLE_CLIENT_ID=作成したOAuthクライアントID
+VITE_GOOGLE_API_KEY=
+VITE_GOOGLE_APP_ID=
+```
 
 本番公開では、OAuth同意画面の公開ステータス、ドメイン所有権、プライバシーポリシー、アプリ情報を確認してください。利用者や公開範囲によってGoogleのOAuth検証が必要になる場合があります。審査要件は変更されるため、公開時点のGoogle公式資料を確認してください。
 
-アクセストークンはメモリだけに保持し、localStorage、IndexedDB、ファイルへ保存しません。OAuthクライアントシークレットや`.env`をリポジトリへコミットしないでください。
+アクセストークンはメモリだけに保持し、localStorage、IndexedDB、ファイルへ保存しません。OAuth Client Secretはフロントエンドでは使用しません。`.env.local`、`.env.production.local`などの環境設定ファイルをリポジトリへコミットしないでください。
 
 ## デプロイ
 
 一般的な静的ホスティングでは`npm run build`後の`dist/`をHTTPS配信します。このリポジトリでは次のコマンドで`/home/pearth/pearth.wpx.jp/public_html/morc/`へ同期します。
 
 ```bash
-npm run build
 ./scripts/deploy.sh
 ```
+
+デプロイスクリプトは`.env.production.local`のClient IDを確認してから本番ビルドを作成し、成果物を同期します。
 
 スクリプトはローカル環境にあるSSH鍵を参照します。秘密鍵はリポジトリに含みません。公開URLは`https://pearth.wpx.jp/morc/`です。
 
@@ -116,5 +128,6 @@ UTF-8の可読JSONで、MIME Typeは`application/vnd.mindorchestrator.map+json`�
 - リアルタイム共同編集、自動マージ、自動レイアウト、画像添付はありません。
 - Drive競合は自動マージせず、Drive版、ローカル維持、別名保存から選びます。
 - Google Pickerの専用ファイル選択画面は未使用で、`appProperties`によるDrive一覧を採用しています。
+- Drive新規ファイルの`parents`を指定していないため、保存先はマイドライブ直下です。任意フォルダ選択は未実装です。
 - OAuthアクセストークンは再読み込み後に再認証が必要です。期限切れ時もローカル内容は維持されます。
 - iOSなど一部環境ではPWAインストール導線やストレージ管理がブラウザ仕様に依存します。
