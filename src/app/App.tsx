@@ -9,6 +9,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { Dialog } from '../components/Dialog'
+import { DriveFolderDialog } from '../components/DriveFolderDialog'
 import { MindNode } from '../components/MindNode'
 import { Toolbar } from '../components/Toolbar'
 import { hasChildren } from '../domain/mindmap'
@@ -16,16 +17,22 @@ import { toFlowEdges, toFlowNodes } from '../domain/flowAdapter'
 import { parseDocument, safeFileName } from '../domain/validation'
 import {
   deleteSetting,
+  getSetting,
   listRecords,
   loadLastRecord,
   saveRecord,
   setLastDocument,
+  setSetting,
 } from '../infrastructure/database'
 import {
   listDriveFiles,
   openDriveFile,
   saveToDrive,
 } from '../infrastructure/google'
+import {
+  selectDriveFolder,
+  type DriveFolder,
+} from '../infrastructure/googlePicker'
 import { useEditorStore } from '../stores/editorStore'
 import type { DocumentRecord } from '../domain/types'
 
@@ -57,6 +64,8 @@ export function App() {
   const [recent, setRecent] = useState<DocumentRecord[]>([])
   const [driveFiles, setDriveFiles] = useState<DriveFile[] | null>(null)
   const [driveBusy, setDriveBusy] = useState(false)
+  const [driveFolder, setDriveFolder] = useState<DriveFolder | null>(null)
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false)
   const [driveState, setDriveState] = useState<
     'idle' | 'saving' | 'saved' | 'error'
   >('idle')
@@ -75,6 +84,16 @@ export function App() {
     deleteSetting('googleClientId').catch((error) =>
       console.error('以前のGoogle設定を削除できませんでした。', error),
     )
+    getSetting('driveFolder')
+      .then((value) => {
+        if (!value) return
+        const folder = JSON.parse(value) as Partial<DriveFolder>
+        if (typeof folder.id === 'string' && typeof folder.name === 'string')
+          setDriveFolder({ id: folder.id, name: folder.name })
+      })
+      .catch((error) =>
+        console.error('Drive保存先を読み込めませんでした。', error),
+      )
   }, [])
   useEffect(() => {
     loadLastRecord()
@@ -208,7 +227,7 @@ export function App() {
     setDriveState('saving')
     store.setError(null)
     try {
-      const file = await saveToDrive(store.record, asCopy)
+      const file = await saveToDrive(store.record, asCopy, driveFolder?.id)
       store.markDriveSaved(file.id, file.modifiedTime)
       setDriveState('saved')
       setConflict(false)
@@ -240,6 +259,32 @@ export function App() {
     } finally {
       setDriveBusy(false)
     }
+  }
+  const chooseDriveFolder = async () => {
+    if (driveBusy) return
+    setDriveBusy(true)
+    store.setError(null)
+    try {
+      const folder = await selectDriveFolder()
+      if (!folder) return
+      await setSetting('driveFolder', JSON.stringify(folder))
+      setDriveFolder(folder)
+      setFolderDialogOpen(false)
+    } catch (error) {
+      console.error(error)
+      store.setError(
+        error instanceof Error
+          ? error.message
+          : 'Drive保存先を選択できませんでした。',
+      )
+    } finally {
+      setDriveBusy(false)
+    }
+  }
+  const useDriveRoot = async () => {
+    await deleteSetting('driveFolder')
+    setDriveFolder(null)
+    setFolderDialogOpen(false)
   }
   const loadDrive = async (id: string) => {
     try {
@@ -412,6 +457,14 @@ export function App() {
               <button onClick={showDriveFiles} disabled={driveBusy}>
                 Driveから開く
               </button>
+              <button
+                onClick={() => {
+                  setFolderDialogOpen(true)
+                  setMenu(null)
+                }}
+              >
+                保存先: {driveFolder?.name ?? 'マイドライブ直下'}
+              </button>
               <button onClick={() => saveDrive()}>Driveに保存</button>
               <button onClick={() => saveDrive(true)}>Driveへ別名で保存</button>
             </>
@@ -504,6 +557,15 @@ export function App() {
             ))}
           </div>
         </Dialog>
+      )}
+      {folderDialogOpen && (
+        <DriveFolderDialog
+          folder={driveFolder}
+          busy={driveBusy}
+          onChoose={chooseDriveFolder}
+          onUseRoot={useDriveRoot}
+          onClose={() => setFolderDialogOpen(false)}
+        />
       )}
       {driveFiles && (
         <Dialog title="Driveから開く" onClose={() => setDriveFiles(null)}>

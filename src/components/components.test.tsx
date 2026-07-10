@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { MindNode } from './MindNode'
 import { Toolbar } from './Toolbar'
 import { Dialog } from './Dialog'
+import { DriveFolderDialog } from './DriveFolderDialog'
 import { createDocument } from '../domain/mindmap'
 import { useEditorStore } from '../stores/editorStore'
 
@@ -120,5 +121,25 @@ describe('editor components', () => {
     expect(
       screen.getByRole('button', { name: 'すべて削除' }),
     ).toBeInTheDocument()
+  })
+  it('shows and changes the Drive destination folder', () => {
+    const onChoose = vi.fn()
+    const onUseRoot = vi.fn()
+    render(
+      <DriveFolderDialog
+        folder={{ id: 'folder-1', name: '企画マップ' }}
+        busy={false}
+        onChoose={onChoose}
+        onUseRoot={onUseRoot}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('企画マップ')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'フォルダを選択' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'マイドライブ直下に戻す' }),
+    )
+    expect(onChoose).toHaveBeenCalledOnce()
+    expect(onUseRoot).toHaveBeenCalledOnce()
   })
 })

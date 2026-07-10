@@ -42,3 +42,9 @@ export async function setLastDocument(id: string) {
 export async function deleteSetting(key: string) {
   return (await db()).delete('settings', key)
 }
+export async function getSetting(key: string) {
+  return (await db()).get('settings', key)
+}
+export async function setSetting(key: string, value: string) {
+  return (await db()).put('settings', value, key)
+}
