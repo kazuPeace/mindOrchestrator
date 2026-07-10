@@ -47,6 +47,23 @@ type Menu = {
 type DriveFile = { id: string; name: string; modifiedTime: string }
 const nodeTypes = { mindNode: MindNode }
 
+class NotePreviewTimer {
+  private timer: number | null = null
+
+  cancel() {
+    if (this.timer !== null) clearTimeout(this.timer)
+    this.timer = null
+  }
+
+  schedule(callback: () => void) {
+    this.cancel()
+    this.timer = window.setTimeout(() => {
+      this.timer = null
+      callback()
+    }, 320)
+  }
+}
+
 export function App() {
   const store = useEditorStore()
   const currentDocument = store.record.document
@@ -65,8 +82,10 @@ export function App() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [notePreview, setNotePreview] = useState<{
+    nodeId: string
     note: string
     anchor: NoteAnchor
+    pinned: boolean
   } | null>(null)
   const [recent, setRecent] = useState<DocumentRecord[]>([])
   const [driveFiles, setDriveFiles] = useState<DriveFile[] | null>(null)
@@ -77,12 +96,29 @@ export function App() {
     'idle' | 'saving' | 'saved' | 'error'
   >('idle')
   const [conflict, setConflict] = useState(false)
+  const [noteTimer] = useState(() => new NotePreviewTimer())
   const dragStart = useRef<{ id: string; x: number; y: number } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW()
+
+  const keepNotePreview = useCallback(() => {
+    noteTimer.cancel()
+  }, [noteTimer])
+  const hideNotePreviewLater = useCallback(
+    (nodeId: string) => {
+      if (useEditorStore.getState().selectedId === nodeId) return
+      noteTimer.schedule(() => {
+        setNotePreview((preview) =>
+          preview?.nodeId === nodeId && !preview.pinned ? null : preview,
+        )
+      })
+    },
+    [noteTimer],
+  )
+  useEffect(() => () => noteTimer.cancel(), [noteTimer])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -162,23 +198,30 @@ export function App() {
       onAdd: (id: string) => store.addChild(id),
       onEdit: (id: string) => store.setEditing(id),
       onMenu: (id: string, x: number, y: number) => {
-        setNotePreview(null)
         setMenu({ type: 'node', nodeId: id, x, y })
       },
-      onNoteHover: (note: string | null, rect: DOMRect | null) =>
-        note && rect
-          ? setNotePreview({
-              note,
-              anchor: {
-                top: rect.top,
-                left: rect.left,
-                right: rect.right,
-                bottom: rect.bottom,
-              },
-            })
-          : setNotePreview(null),
+      onNoteShow: (
+        id: string,
+        note: string,
+        rect: DOMRect,
+        pinned: boolean,
+      ) => {
+        keepNotePreview()
+        setNotePreview({
+          nodeId: id,
+          note,
+          pinned,
+          anchor: {
+            top: rect.top,
+            left: rect.left,
+            right: rect.right,
+            bottom: rect.bottom,
+          },
+        })
+      },
+      onNoteHide: hideNotePreviewLater,
     }),
-    [store],
+    [store, keepNotePreview, hideNotePreviewLater],
   )
   const nodes = useMemo(
     () =>
@@ -380,7 +423,10 @@ export function App() {
           ? 'ローカル保存済み · Drive未同期'
           : 'Drive保存済み'
 
-  const onNodeClick: NodeMouseHandler = (_, node) => store.setSelected(node.id)
+  const onNodeClick: NodeMouseHandler = (_, node) => {
+    if (notePreview?.nodeId !== node.id) setNotePreview(null)
+    store.setSelected(node.id)
+  }
   if (!ready)
     return (
       <main className="loading">
@@ -410,7 +456,10 @@ export function App() {
           edges={edges}
           nodeTypes={nodeTypes}
           onNodeClick={onNodeClick}
-          onPaneClick={() => store.setSelected(null)}
+          onPaneClick={() => {
+            setNotePreview(null)
+            store.setSelected(null)
+          }}
           onNodeDoubleClick={(_, node) => store.setEditing(node.id)}
           onNodeDragStart={(_, node) => {
             dragStart.current = {
@@ -541,8 +590,14 @@ export function App() {
           )}
         </div>
       )}
-      {notePreview && !menu && !editingNoteId && (
-        <NotePreview note={notePreview.note} anchor={notePreview.anchor} />
+      {notePreview && !editingNoteId && (
+        <NotePreview
+          note={notePreview.note}
+          anchor={notePreview.anchor}
+          pinned={notePreview.pinned}
+          onKeep={keepNotePreview}
+          onLeave={() => hideNotePreviewLater(notePreview.nodeId)}
+        />
       )}
       {deleteTarget && (
         <Dialog

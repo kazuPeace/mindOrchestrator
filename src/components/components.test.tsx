@@ -27,7 +27,8 @@ describe('editor components', () => {
             onAdd: vi.fn(),
             onEdit: vi.fn(),
             onMenu: vi.fn(),
-            onNoteHover: vi.fn(),
+            onNoteShow: vi.fn(),
+            onNoteHide: vi.fn(),
           }}
           selected={false}
           selectable
@@ -66,7 +67,8 @@ describe('editor components', () => {
             onAdd: vi.fn(),
             onEdit: vi.fn(),
             onMenu: vi.fn(),
-            onNoteHover: vi.fn(),
+            onNoteShow: vi.fn(),
+            onNoteHide: vi.fn(),
           }}
           selected
           selectable
@@ -153,6 +155,8 @@ describe('editor components', () => {
   })
   it('edits a multiline note and renders its hover preview', () => {
     const onSave = vi.fn()
+    const onKeep = vi.fn()
+    const onLeave = vi.fn()
     render(
       <>
         <NoteEditorDialog
@@ -164,6 +168,9 @@ describe('editor components', () => {
         <NotePreview
           note={'背景情報\n次のアクション'}
           anchor={{ top: 100, left: 100, right: 220, bottom: 150 }}
+          pinned
+          onKeep={onKeep}
+          onLeave={onLeave}
         />
       </>,
     )
@@ -172,5 +179,10 @@ describe('editor components', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(onSave).toHaveBeenCalledWith('更新したノート')
     expect(screen.getByRole('tooltip')).toHaveTextContent('次のアクション')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('選択中')
+    fireEvent.mouseEnter(screen.getByRole('tooltip').parentElement!)
+    fireEvent.mouseLeave(screen.getByRole('tooltip').parentElement!)
+    expect(onKeep).toHaveBeenCalledOnce()
+    expect(onLeave).toHaveBeenCalledOnce()
   })
 })

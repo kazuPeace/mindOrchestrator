@@ -87,7 +87,8 @@ describe('mind map domain', () => {
       onAdd: vi.fn(),
       onEdit: vi.fn(),
       onMenu: vi.fn(),
-      onNoteHover: vi.fn(),
+      onNoteShow: vi.fn(),
+      onNoteHide: vi.fn(),
     })
     expect(nodes[0].data.text).toBe('中心テーマ')
     expect(toFlowEdges(child)[0].source).toBe(doc.nodes[0].id)

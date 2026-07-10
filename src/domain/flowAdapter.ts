@@ -7,7 +7,8 @@ export type FlowNodeData = {
   onAdd: (id: string) => void
   onEdit: (id: string) => void
   onMenu: (id: string, x: number, y: number) => void
-  onNoteHover: (note: string | null, rect: DOMRect | null) => void
+  onNoteShow: (id: string, note: string, rect: DOMRect, pinned: boolean) => void
+  onNoteHide: (id: string) => void
 }
 
 export function toFlowNodes(

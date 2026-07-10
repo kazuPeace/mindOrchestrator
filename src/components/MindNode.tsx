@@ -86,23 +86,31 @@ export function MindNode({
   const editingSeed = useEditorStore((state) => state.editingSeed)
   const setEditing = useEditorStore((state) => state.setEditing)
   const updateText = useEditorStore((state) => state.updateText)
+  const root = useRef<HTMLDivElement>(null)
   const editing = editingId === id
   const commit = (value: string) => {
     updateText(id, value)
     setEditing(null)
   }
+  useLayoutEffect(() => {
+    if (!selected || !data.note || !root.current) return
+    data.onNoteShow(id, data.note, root.current.getBoundingClientRect(), true)
+  }, [data, id, selected])
   return (
     <div
+      ref={root}
       className={`mind-node ${selected ? 'selected' : ''}`}
       onDoubleClick={() => setEditing(id)}
       onMouseEnter={(event) => {
         if (data.note)
-          data.onNoteHover(
+          data.onNoteShow(
+            id,
             data.note,
             event.currentTarget.getBoundingClientRect(),
+            selected,
           )
       }}
-      onMouseLeave={() => data.onNoteHover(null, null)}
+      onMouseLeave={() => data.onNoteHide(id)}
     >
       <Handle type="target" position={Position.Left} className="node-handle" />
       {editing ? (
