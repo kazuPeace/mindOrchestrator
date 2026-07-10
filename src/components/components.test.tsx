@@ -5,6 +5,8 @@ import { MindNode } from './MindNode'
 import { Toolbar } from './Toolbar'
 import { Dialog } from './Dialog'
 import { DriveFolderDialog } from './DriveFolderDialog'
+import { NoteEditorDialog } from './NoteEditorDialog'
+import { NotePreview } from './NotePreview'
 import { createDocument } from '../domain/mindmap'
 import { useEditorStore } from '../stores/editorStore'
 
@@ -25,6 +27,7 @@ describe('editor components', () => {
             onAdd: vi.fn(),
             onEdit: vi.fn(),
             onMenu: vi.fn(),
+            onNoteHover: vi.fn(),
           }}
           selected={false}
           selectable
@@ -63,6 +66,7 @@ describe('editor components', () => {
             onAdd: vi.fn(),
             onEdit: vi.fn(),
             onMenu: vi.fn(),
+            onNoteHover: vi.fn(),
           }}
           selected
           selectable
@@ -77,9 +81,14 @@ describe('editor components', () => {
       </ReactFlowProvider>,
     )
     const input = screen.getByLabelText('ノードのテキスト')
+    expect(input).toHaveFocus()
     fireEvent.compositionStart(input)
+    fireEvent.change(input, { target: { value: 'か' } })
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
     expect(screen.getByLabelText('ノードのテキスト')).toBeInTheDocument()
+    fireEvent.compositionEnd(input)
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(useEditorStore.getState().record.document.nodes[0].text).toBe('か')
   })
   it('shows save and offline status', () => {
     const props = {
@@ -141,5 +150,27 @@ describe('editor components', () => {
     )
     expect(onChoose).toHaveBeenCalledOnce()
     expect(onUseRoot).toHaveBeenCalledOnce()
+  })
+  it('edits a multiline note and renders its hover preview', () => {
+    const onSave = vi.fn()
+    render(
+      <>
+        <NoteEditorDialog
+          nodeText="調査"
+          initialNote="既存ノート"
+          onSave={onSave}
+          onClose={vi.fn()}
+        />
+        <NotePreview
+          note={'背景情報\n次のアクション'}
+          anchor={{ top: 100, left: 100, right: 220, bottom: 150 }}
+        />
+      </>,
+    )
+    const textarea = screen.getByLabelText('ノート')
+    fireEvent.change(textarea, { target: { value: '更新したノート' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(onSave).toHaveBeenCalledWith('更新したノート')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('次のアクション')
   })
 })

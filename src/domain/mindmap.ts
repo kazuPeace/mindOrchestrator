@@ -83,7 +83,7 @@ export function addSibling(doc: MindMapDocument, nodeId: string) {
 export function updateNode(
   doc: MindMapDocument,
   nodeId: string,
-  patch: Partial<Pick<MindMapNode, 'text' | 'position' | 'style'>>,
+  patch: Partial<Pick<MindMapNode, 'text' | 'note' | 'position' | 'style'>>,
 ): MindMapDocument {
   return withUpdated(
     doc,

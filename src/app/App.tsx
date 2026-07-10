@@ -11,6 +11,8 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { Dialog } from '../components/Dialog'
 import { DriveFolderDialog } from '../components/DriveFolderDialog'
 import { MindNode } from '../components/MindNode'
+import { NoteEditorDialog } from '../components/NoteEditorDialog'
+import { NotePreview, type NoteAnchor } from '../components/NotePreview'
 import { Toolbar } from '../components/Toolbar'
 import { hasChildren } from '../domain/mindmap'
 import { toFlowEdges, toFlowNodes } from '../domain/flowAdapter'
@@ -61,6 +63,11 @@ export function App() {
   )
   const [menu, setMenu] = useState<Menu>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [notePreview, setNotePreview] = useState<{
+    note: string
+    anchor: NoteAnchor
+  } | null>(null)
   const [recent, setRecent] = useState<DocumentRecord[]>([])
   const [driveFiles, setDriveFiles] = useState<DriveFile[] | null>(null)
   const [driveBusy, setDriveBusy] = useState(false)
@@ -154,8 +161,22 @@ export function App() {
     () => ({
       onAdd: (id: string) => store.addChild(id),
       onEdit: (id: string) => store.setEditing(id),
-      onMenu: (id: string, x: number, y: number) =>
-        setMenu({ type: 'node', nodeId: id, x, y }),
+      onMenu: (id: string, x: number, y: number) => {
+        setNotePreview(null)
+        setMenu({ type: 'node', nodeId: id, x, y })
+      },
+      onNoteHover: (note: string | null, rect: DOMRect | null) =>
+        note && rect
+          ? setNotePreview({
+              note,
+              anchor: {
+                top: rect.top,
+                left: rect.left,
+                right: rect.right,
+                bottom: rect.bottom,
+              },
+            })
+          : setNotePreview(null),
     }),
     [store],
   )
@@ -199,6 +220,7 @@ export function App() {
         else store.undo()
         return
       }
+      if (store.editingId) return
       if (!store.selectedId) return
       if (event.key === 'Tab') {
         event.preventDefault()
@@ -262,6 +284,7 @@ export function App() {
   }
   const chooseDriveFolder = async () => {
     if (driveBusy) return
+    setFolderDialogOpen(false)
     setDriveBusy(true)
     store.setError(null)
     try {
@@ -501,6 +524,14 @@ export function App() {
                 テキストを編集
               </button>
               <button
+                onClick={() => {
+                  setEditingNoteId(menu.nodeId!)
+                  setMenu(null)
+                }}
+              >
+                ノートを編集
+              </button>
+              <button
                 className="danger"
                 onClick={() => requestDelete(menu.nodeId!)}
               >
@@ -509,6 +540,9 @@ export function App() {
             </>
           )}
         </div>
+      )}
+      {notePreview && !menu && !editingNoteId && (
+        <NotePreview note={notePreview.note} anchor={notePreview.anchor} />
       )}
       {deleteTarget && (
         <Dialog
@@ -567,6 +601,23 @@ export function App() {
           onClose={() => setFolderDialogOpen(false)}
         />
       )}
+      {editingNoteId &&
+        (() => {
+          const node = store.record.document.nodes.find(
+            (item) => item.id === editingNoteId,
+          )
+          return node ? (
+            <NoteEditorDialog
+              nodeText={node.text}
+              initialNote={node.note ?? ''}
+              onSave={(note) => {
+                store.updateNote(node.id, note)
+                setEditingNoteId(null)
+              }}
+              onClose={() => setEditingNoteId(null)}
+            />
+          ) : null
+        })()}
       {driveFiles && (
         <Dialog title="Driveから開く" onClose={() => setDriveFiles(null)}>
           <div className="file-list">

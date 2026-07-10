@@ -30,6 +30,7 @@ type EditorState = {
   addChild: (parentId: string) => string
   addSibling: (nodeId: string) => string
   updateText: (id: string, text: string) => void
+  updateNote: (id: string, note: string) => void
   updatePosition: (id: string, point: Point, recordHistory?: boolean) => void
   deleteNode: (id: string, mode: DeleteMode) => void
   updateTitle: (title: string) => void
@@ -121,6 +122,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   updateText: (id, text) =>
     set((state) => ({
       ...mutated(state, updateNode(state.record.document, id, { text })),
+    })),
+  updateNote: (id, note) =>
+    set((state) => ({
+      ...mutated(
+        state,
+        updateNode(state.record.document, id, {
+          note: note.trim() ? note : undefined,
+        }),
+      ),
     })),
   updatePosition: (id, point, recordHistory = true) =>
     set((state) => ({
