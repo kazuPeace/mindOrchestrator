@@ -221,6 +221,22 @@ button:disabled {
   color: var(--muted);
   cursor: pointer;
 }
+.node-note-indicator {
+  position: absolute;
+  top: -8px;
+  left: 13px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--surface);
+  border-radius: 7px;
+  color: var(--forest);
+  background: var(--gold);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
 .node-add {
   right: 31px;
   font-size: 20px;
@@ -341,75 +357,125 @@ button:disabled {
 .file-list button:hover {
   background: var(--forest-soft);
 }
-.settings-form {
+.primary-button {
+  color: var(--paper) !important;
+  border-color: var(--forest) !important;
+  background: var(--forest) !important;
+}
+.folder-settings {
   display: flex;
   flex-direction: column;
   gap: 10px;
   margin: 8px 20px 20px;
 }
-.settings-form p {
+.folder-settings p {
   margin: 0;
-  line-height: 1.55;
 }
-.settings-form label {
-  margin-top: 4px;
-  font-weight: 700;
-}
-.settings-form input {
-  width: 100%;
-  min-height: 44px;
-  padding: 9px 11px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  color: var(--ink);
-  background: var(--paper);
-}
-.settings-form a {
-  color: var(--forest);
-  font-weight: 650;
-}
-.settings-help {
+.folder-label,
+.folder-help {
   color: var(--muted);
   font-size: 13px;
+  line-height: 1.55;
 }
-.settings-help code {
-  overflow-wrap: anywhere;
-  color: var(--ink);
-}
-.field-error {
-  color: var(--danger);
-  font-size: 13px;
-}
-.connection-state {
+.folder-current {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 5px;
-  padding: 10px;
-  border-radius: 9px;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
   background: var(--paper);
 }
-.status-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--muted);
+.folder-current span {
+  color: var(--gold);
+  font-size: 26px;
 }
-.status-dot.connected {
-  background: #38a169;
-  box-shadow: 0 0 0 4px color-mix(in srgb, #38a169 18%, transparent);
-}
-.settings-actions {
-  margin: 4px 0 0 !important;
+.folder-actions {
+  margin: 8px 0 0 !important;
   flex-wrap: wrap;
 }
-.action-spacer {
-  flex: 1;
+.note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 8px 20px 20px;
 }
-.primary-button {
-  color: var(--paper) !important;
-  border-color: var(--forest) !important;
-  background: var(--forest) !important;
+.note-form label {
+  font-weight: 700;
+}
+.note-form textarea {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+  line-height: 1.55;
+}
+.note-node-label {
+  overflow: hidden;
+  margin: 0;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.note-actions {
+  margin: 4px 0 0 !important;
+}
+.note-preview-shell {
+  position: fixed;
+  z-index: 35;
+  display: flex;
+  padding-block: 12px;
+}
+.note-preview-shell-right {
+  padding-left: 14px;
+}
+.note-preview-shell-left {
+  padding-right: 14px;
+}
+.note-preview {
+  position: relative;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 13px 15px;
+  border: 1px solid color-mix(in srgb, var(--gold) 55%, var(--line));
+  border-radius: 13px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--surface) 97%, var(--gold));
+  box-shadow: var(--shadow);
+  animation: note-in 120ms ease-out;
+}
+.note-preview.pinned {
+  border-color: color-mix(in srgb, var(--forest) 60%, var(--gold));
+}
+.note-preview-kicker {
+  color: var(--forest);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+.note-preview p {
+  margin: 6px 0 0;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+@keyframes note-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
 }
 .file-list {
   max-height: 55vh;

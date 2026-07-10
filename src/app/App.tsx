@@ -9,8 +9,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { Dialog } from '../components/Dialog'
-import { GoogleDriveSettings } from '../components/GoogleDriveSettings'
+import { DriveFolderDialog } from '../components/DriveFolderDialog'
 import { MindNode } from '../components/MindNode'
+import { NoteEditorDialog } from '../components/NoteEditorDialog'
+import { NotePreview, type NoteAnchor } from '../components/NotePreview'
 import { Toolbar } from '../components/Toolbar'
 import { hasChildren } from '../domain/mindmap'
 import { toFlowEdges, toFlowNodes } from '../domain/flowAdapter'
@@ -25,13 +27,14 @@ import {
   setSetting,
 } from '../infrastructure/database'
 import {
-  authenticate,
-  configureGoogle,
-  getGoogleClientId,
   listDriveFiles,
   openDriveFile,
   saveToDrive,
 } from '../infrastructure/google'
+import {
+  selectDriveFolder,
+  type DriveFolder,
+} from '../infrastructure/googlePicker'
 import { useEditorStore } from '../stores/editorStore'
 import type { DocumentRecord } from '../domain/types'
 
@@ -43,6 +46,23 @@ type Menu = {
 } | null
 type DriveFile = { id: string; name: string; modifiedTime: string }
 const nodeTypes = { mindNode: MindNode }
+
+class NotePreviewTimer {
+  private timer: number | null = null
+
+  cancel() {
+    if (this.timer !== null) clearTimeout(this.timer)
+    this.timer = null
+  }
+
+  schedule(callback: () => void) {
+    this.cancel()
+    this.timer = window.setTimeout(() => {
+      this.timer = null
+      callback()
+    }, 320)
+  }
+}
 
 export function App() {
   const store = useEditorStore()
@@ -60,16 +80,23 @@ export function App() {
   )
   const [menu, setMenu] = useState<Menu>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [notePreview, setNotePreview] = useState<{
+    nodeId: string
+    note: string
+    anchor: NoteAnchor
+    pinned: boolean
+  } | null>(null)
   const [recent, setRecent] = useState<DocumentRecord[]>([])
   const [driveFiles, setDriveFiles] = useState<DriveFile[] | null>(null)
   const [driveBusy, setDriveBusy] = useState(false)
-  const [driveSettingsOpen, setDriveSettingsOpen] = useState(false)
-  const [googleClientId, setGoogleClientId] = useState(getGoogleClientId)
-  const [googleConnected, setGoogleConnected] = useState(false)
+  const [driveFolder, setDriveFolder] = useState<DriveFolder | null>(null)
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false)
   const [driveState, setDriveState] = useState<
     'idle' | 'saving' | 'saved' | 'error'
   >('idle')
   const [conflict, setConflict] = useState(false)
+  const [noteTimer] = useState(() => new NotePreviewTimer())
   const dragStart = useRef<{ id: string; x: number; y: number } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const {
@@ -77,18 +104,38 @@ export function App() {
     updateServiceWorker,
   } = useRegisterSW()
 
+  const keepNotePreview = useCallback(() => {
+    noteTimer.cancel()
+  }, [noteTimer])
+  const hideNotePreviewLater = useCallback(
+    (nodeId: string) => {
+      if (useEditorStore.getState().selectedId === nodeId) return
+      noteTimer.schedule(() => {
+        setNotePreview((preview) =>
+          preview?.nodeId === nodeId && !preview.pinned ? null : preview,
+        )
+      })
+    },
+    [noteTimer],
+  )
+  useEffect(() => () => noteTimer.cancel(), [noteTimer])
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
   useEffect(() => {
-    getSetting('googleClientId')
-      .then((savedClientId) => {
-        if (!savedClientId) return
-        configureGoogle(savedClientId)
-        setGoogleClientId(savedClientId)
+    deleteSetting('googleClientId').catch((error) =>
+      console.error('以前のGoogle設定を削除できませんでした。', error),
+    )
+    getSetting('driveFolder')
+      .then((value) => {
+        if (!value) return
+        const folder = JSON.parse(value) as Partial<DriveFolder>
+        if (typeof folder.id === 'string' && typeof folder.name === 'string')
+          setDriveFolder({ id: folder.id, name: folder.name })
       })
       .catch((error) =>
-        console.error('Google設定を読み込めませんでした。', error),
+        console.error('Drive保存先を読み込めませんでした。', error),
       )
   }, [])
   useEffect(() => {
@@ -150,10 +197,31 @@ export function App() {
     () => ({
       onAdd: (id: string) => store.addChild(id),
       onEdit: (id: string) => store.setEditing(id),
-      onMenu: (id: string, x: number, y: number) =>
-        setMenu({ type: 'node', nodeId: id, x, y }),
+      onMenu: (id: string, x: number, y: number) => {
+        setMenu({ type: 'node', nodeId: id, x, y })
+      },
+      onNoteShow: (
+        id: string,
+        note: string,
+        rect: DOMRect,
+        pinned: boolean,
+      ) => {
+        keepNotePreview()
+        setNotePreview({
+          nodeId: id,
+          note,
+          pinned,
+          anchor: {
+            top: rect.top,
+            left: rect.left,
+            right: rect.right,
+            bottom: rect.bottom,
+          },
+        })
+      },
+      onNoteHide: hideNotePreviewLater,
     }),
-    [store],
+    [store, keepNotePreview, hideNotePreviewLater],
   )
   const nodes = useMemo(
     () =>
@@ -195,6 +263,7 @@ export function App() {
         else store.undo()
         return
       }
+      if (store.editingId) return
       if (!store.selectedId) return
       if (event.key === 'Tab') {
         event.preventDefault()
@@ -218,16 +287,12 @@ export function App() {
   }, [store, requestDelete])
 
   const saveDrive = async (asCopy = false) => {
-    if (!getGoogleClientId()) {
-      setDriveSettingsOpen(true)
-      return
-    }
     if (driveBusy) return
     setDriveBusy(true)
     setDriveState('saving')
     store.setError(null)
     try {
-      const file = await saveToDrive(store.record, asCopy)
+      const file = await saveToDrive(store.record, asCopy, driveFolder?.id)
       store.markDriveSaved(file.id, file.modifiedTime)
       setDriveState('saved')
       setConflict(false)
@@ -245,10 +310,6 @@ export function App() {
     }
   }
   const showDriveFiles = async () => {
-    if (!getGoogleClientId()) {
-      setDriveSettingsOpen(true)
-      return
-    }
     setDriveBusy(true)
     store.setError(null)
     try {
@@ -264,36 +325,32 @@ export function App() {
       setDriveBusy(false)
     }
   }
-  const saveGoogleSettings = async (clientId: string) => {
-    await setSetting('googleClientId', clientId)
-    configureGoogle(clientId)
-    setGoogleClientId(clientId)
-    setGoogleConnected(false)
-    store.setError(null)
-  }
-  const connectGoogle = async () => {
+  const chooseDriveFolder = async () => {
+    if (driveBusy) return
+    setFolderDialogOpen(false)
     setDriveBusy(true)
     store.setError(null)
     try {
-      await authenticate()
-      setGoogleConnected(true)
+      const folder = await selectDriveFolder()
+      if (!folder) return
+      await setSetting('driveFolder', JSON.stringify(folder))
+      setDriveFolder(folder)
+      setFolderDialogOpen(false)
     } catch (error) {
       console.error(error)
-      setGoogleConnected(false)
       store.setError(
         error instanceof Error
           ? error.message
-          : 'Googleへ接続できませんでした。',
+          : 'Drive保存先を選択できませんでした。',
       )
     } finally {
       setDriveBusy(false)
     }
   }
-  const removeGoogleSettings = async () => {
-    await deleteSetting('googleClientId')
-    configureGoogle('')
-    setGoogleClientId(getGoogleClientId())
-    setGoogleConnected(false)
+  const useDriveRoot = async () => {
+    await deleteSetting('driveFolder')
+    setDriveFolder(null)
+    setFolderDialogOpen(false)
   }
   const loadDrive = async (id: string) => {
     try {
@@ -366,7 +423,10 @@ export function App() {
           ? 'ローカル保存済み · Drive未同期'
           : 'Drive保存済み'
 
-  const onNodeClick: NodeMouseHandler = (_, node) => store.setSelected(node.id)
+  const onNodeClick: NodeMouseHandler = (_, node) => {
+    if (notePreview?.nodeId !== node.id) setNotePreview(null)
+    store.setSelected(node.id)
+  }
   if (!ready)
     return (
       <main className="loading">
@@ -386,7 +446,6 @@ export function App() {
         onUndo={store.undo}
         onRedo={store.redo}
         onDriveSave={() => saveDrive()}
-        onDriveSettings={() => setDriveSettingsOpen(true)}
         onFileMenu={() => setMenu({ type: 'file', x: innerWidth - 330, y: 60 })}
         onViewMenu={() => setMenu({ type: 'view', x: innerWidth - 240, y: 60 })}
         onTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')}
@@ -397,7 +456,10 @@ export function App() {
           edges={edges}
           nodeTypes={nodeTypes}
           onNodeClick={onNodeClick}
-          onPaneClick={() => store.setSelected(null)}
+          onPaneClick={() => {
+            setNotePreview(null)
+            store.setSelected(null)
+          }}
           onNodeDoubleClick={(_, node) => store.setEditing(node.id)}
           onNodeDragStart={(_, node) => {
             dragStart.current = {
@@ -467,8 +529,13 @@ export function App() {
               <button onClick={showDriveFiles} disabled={driveBusy}>
                 Driveから開く
               </button>
-              <button onClick={() => setDriveSettingsOpen(true)}>
-                Google Drive設定
+              <button
+                onClick={() => {
+                  setFolderDialogOpen(true)
+                  setMenu(null)
+                }}
+              >
+                保存先: {driveFolder?.name ?? 'マイドライブ直下'}
               </button>
               <button onClick={() => saveDrive()}>Driveに保存</button>
               <button onClick={() => saveDrive(true)}>Driveへ別名で保存</button>
@@ -506,6 +573,14 @@ export function App() {
                 テキストを編集
               </button>
               <button
+                onClick={() => {
+                  setEditingNoteId(menu.nodeId!)
+                  setMenu(null)
+                }}
+              >
+                ノートを編集
+              </button>
+              <button
                 className="danger"
                 onClick={() => requestDelete(menu.nodeId!)}
               >
@@ -514,6 +589,15 @@ export function App() {
             </>
           )}
         </div>
+      )}
+      {notePreview && !editingNoteId && (
+        <NotePreview
+          note={notePreview.note}
+          anchor={notePreview.anchor}
+          pinned={notePreview.pinned}
+          onKeep={keepNotePreview}
+          onLeave={() => hideNotePreviewLater(notePreview.nodeId)}
+        />
       )}
       {deleteTarget && (
         <Dialog
@@ -563,17 +647,32 @@ export function App() {
           </div>
         </Dialog>
       )}
-      {driveSettingsOpen && (
-        <GoogleDriveSettings
-          initialClientId={googleClientId}
-          connected={googleConnected}
+      {folderDialogOpen && (
+        <DriveFolderDialog
+          folder={driveFolder}
           busy={driveBusy}
-          onSave={saveGoogleSettings}
-          onConnect={connectGoogle}
-          onRemove={removeGoogleSettings}
-          onClose={() => setDriveSettingsOpen(false)}
+          onChoose={chooseDriveFolder}
+          onUseRoot={useDriveRoot}
+          onClose={() => setFolderDialogOpen(false)}
         />
       )}
+      {editingNoteId &&
+        (() => {
+          const node = store.record.document.nodes.find(
+            (item) => item.id === editingNoteId,
+          )
+          return node ? (
+            <NoteEditorDialog
+              nodeText={node.text}
+              initialNote={node.note ?? ''}
+              onSave={(note) => {
+                store.updateNote(node.id, note)
+                setEditingNoteId(null)
+              }}
+              onClose={() => setEditingNoteId(null)}
+            />
+          ) : null
+        })()}
       {driveFiles && (
         <Dialog title="Driveから開く" onClose={() => setDriveFiles(null)}>
           <div className="file-list">

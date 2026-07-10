@@ -36,6 +36,7 @@ export function parseDocument(value: unknown): MindMapDocument {
       !isObject(raw) ||
       typeof raw.id !== 'string' ||
       typeof raw.text !== 'string' ||
+      !(raw.note === undefined || typeof raw.note === 'string') ||
       !isObject(raw.position) ||
       typeof raw.position.x !== 'number' ||
       typeof raw.position.y !== 'number' ||

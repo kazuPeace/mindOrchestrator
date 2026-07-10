@@ -87,6 +87,8 @@ describe('mind map domain', () => {
       onAdd: vi.fn(),
       onEdit: vi.fn(),
       onMenu: vi.fn(),
+      onNoteShow: vi.fn(),
+      onNoteHide: vi.fn(),
     })
     expect(nodes[0].data.text).toBe('中心テーマ')
     expect(toFlowEdges(child)[0].source).toBe(doc.nodes[0].id)
@@ -109,6 +111,14 @@ describe('mind map domain', () => {
     const result = updateNode(doc, doc.nodes[0].id, { text: '' })
     expect(result.nodes[0].text).toBe('')
     expect(result).not.toBe(doc)
+  })
+  it('stores optional node notes in the persistence model', () => {
+    const doc = createDocument()
+    const result = updateNode(doc, doc.nodes[0].id, {
+      note: '背景と次のアクション',
+    })
+    expect(result.nodes[0].note).toBe('背景と次のアクション')
+    expect(parseDocument(JSON.parse(JSON.stringify(result)))).toEqual(result)
   })
   it('detects Drive conflicts only for dirty records changed remotely', () => {
     const document = createDocument()

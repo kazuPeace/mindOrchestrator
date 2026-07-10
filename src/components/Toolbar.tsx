@@ -19,7 +19,6 @@ export function Toolbar({
   onUndo,
   onRedo,
   onDriveSave,
-  onDriveSettings,
   onFileMenu,
   onViewMenu,
   onTheme,
@@ -33,7 +32,6 @@ export function Toolbar({
   onUndo: () => void
   onRedo: () => void
   onDriveSave: () => void
-  onDriveSettings: () => void
   onFileMenu: () => void
   onViewMenu: () => void
   onTheme: () => void
@@ -61,11 +59,22 @@ export function Toolbar({
           ↷
         </Button>
         <Button onClick={onDriveSave}>Driveに保存</Button>
-        <Button onClick={onDriveSettings} aria-label="Google Drive設定">
-          Drive設定
+        <Button
+          onClick={(event) => {
+            event.stopPropagation()
+            onFileMenu()
+          }}
+        >
+          ファイル
         </Button>
-        <Button onClick={onFileMenu}>ファイル</Button>
-        <Button onClick={onViewMenu}>表示</Button>
+        <Button
+          onClick={(event) => {
+            event.stopPropagation()
+            onViewMenu()
+          }}
+        >
+          表示
+        </Button>
         <Button onClick={onTheme} aria-label="テーマ切替">
           ◐
         </Button>

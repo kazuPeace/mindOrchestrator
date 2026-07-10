@@ -23,16 +23,6 @@ type DriveFile = { id: string; name: string; modifiedTime: string }
 
 let accessToken: string | null = null
 let scriptPromise: Promise<void> | null = null
-let configuredClientId = ''
-
-export function configureGoogle(clientId: string) {
-  configuredClientId = clientId.trim()
-  accessToken = null
-}
-
-export function getGoogleClientId() {
-  return configuredClientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
-}
 
 function loadIdentityScript() {
   if (window.google?.accounts?.oauth2) return Promise.resolve()
@@ -52,7 +42,7 @@ function loadIdentityScript() {
 export async function authenticate(): Promise<string> {
   if (!navigator.onLine)
     throw new Error('オフラインです。ローカル保存は継続されます。')
-  const clientId = getGoogleClientId()
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
   if (!clientId) throw new Error('Google OAuth Client IDが設定されていません。')
   await loadIdentityScript()
   return new Promise((resolve, reject) => {
@@ -99,17 +89,25 @@ async function api(url: string, init?: RequestInit) {
   return response
 }
 
-function multipart(document: MindMapDocument) {
-  const boundary = `morc_${crypto.randomUUID()}`
-  const metadata = {
+export function buildDriveMetadata(
+  document: MindMapDocument,
+  parentFolderId?: string,
+) {
+  return {
     name: safeFileName(document.title),
     mimeType: 'application/json',
+    ...(parentFolderId ? { parents: [parentFolderId] } : {}),
     appProperties: {
       mindOrchestrator: 'true',
       schemaVersion: '1',
       documentId: document.id,
     },
   }
+}
+
+function multipart(document: MindMapDocument, parentFolderId?: string) {
+  const boundary = `morc_${crypto.randomUUID()}`
+  const metadata = buildDriveMetadata(document, parentFolderId)
   return {
     boundary,
     body: `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(document, null, 2)}\r\n--${boundary}--`,
@@ -119,6 +117,7 @@ function multipart(document: MindMapDocument) {
 export async function saveToDrive(
   record: DocumentRecord,
   asCopy = false,
+  parentFolderId?: string,
 ): Promise<DriveFile> {
   if (record.driveFileId && !asCopy) {
     const metadata = await api(
@@ -128,8 +127,11 @@ export async function saveToDrive(
     if (hasDriveConflict(record, remote.modifiedTime))
       throw new Error('DRIVE_CONFLICT')
   }
-  const { boundary, body } = multipart(record.document)
   const id = asCopy ? undefined : record.driveFileId
+  const { boundary, body } = multipart(
+    record.document,
+    id ? undefined : parentFolderId,
+  )
   const response = await api(
     `https://www.googleapis.com/upload/drive/v3/files${id ? `/${id}` : ''}?uploadType=multipart&fields=id,name,modifiedTime`,
     {

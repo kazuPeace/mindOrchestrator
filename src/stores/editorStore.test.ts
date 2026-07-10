@@ -18,4 +18,15 @@ describe('editor history', () => {
     useEditorStore.getState().redo()
     expect(useEditorStore.getState().record.document.nodes).toHaveLength(2)
   })
+  it('stores node notes in undo history', () => {
+    const root = useEditorStore.getState().record.document.nodes[0].id
+    useEditorStore.getState().updateNote(root, '検討メモ')
+    expect(useEditorStore.getState().record.document.nodes[0].note).toBe(
+      '検討メモ',
+    )
+    useEditorStore.getState().undo()
+    expect(
+      useEditorStore.getState().record.document.nodes[0].note,
+    ).toBeUndefined()
+  })
 })

@@ -2,6 +2,7 @@ export type Point = { x: number; y: number }
 export type MindMapNode = {
   id: string
   text: string
+  note?: string
   position: Point
   parentId: string | null
   style?: { backgroundColor?: string; textColor?: string; borderColor?: string }

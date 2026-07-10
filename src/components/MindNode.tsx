@@ -1,7 +1,81 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FlowNodeData } from '../domain/flowAdapter'
 import { useEditorStore } from '../stores/editorStore'
+
+function NodeTextEditor({
+  initialValue,
+  seeded,
+  onCommit,
+  onCancel,
+}: {
+  initialValue: string
+  seeded: boolean
+  onCommit: (value: string) => void
+  onCancel: () => void
+}) {
+  const [draft, setDraft] = useState(initialValue)
+  const composing = useRef(false)
+  const input = useRef<HTMLInputElement>(null)
+
+  useLayoutEffect(() => {
+    const element = input.current
+    if (!element) return
+    const focusEditor = () => {
+      if (!input.current) return
+      const editor = input.current
+      editor.focus()
+      if (seeded)
+        editor.setSelectionRange(initialValue.length, initialValue.length)
+      else editor.select()
+    }
+    focusEditor()
+    const frame = requestAnimationFrame(focusEditor)
+    return () => cancelAnimationFrame(frame)
+  }, [initialValue, seeded])
+  useEffect(() => {
+    const focusEditor = () => {
+      const editor = input.current
+      if (!editor) return
+      editor.focus()
+      if (seeded)
+        editor.setSelectionRange(initialValue.length, initialValue.length)
+      else editor.select()
+    }
+    focusEditor()
+    const timer = window.setTimeout(focusEditor, 0)
+    return () => clearTimeout(timer)
+  }, [initialValue, seeded])
+
+  return (
+    <input
+      ref={input}
+      autoFocus
+      className="node-input nodrag"
+      value={draft}
+      aria-label="ノードのテキスト"
+      onChange={(event) => setDraft(event.target.value)}
+      onCompositionStart={() => {
+        composing.current = true
+      }}
+      onCompositionEnd={() => {
+        composing.current = false
+      }}
+      onBlur={() => onCommit(draft)}
+      onKeyDown={(event) => {
+        if (
+          event.key === 'Enter' &&
+          !composing.current &&
+          !event.nativeEvent.isComposing
+        ) {
+          event.preventDefault()
+          onCommit(draft)
+        }
+        if (event.key === 'Escape') onCancel()
+      }}
+    />
+  )
+}
 
 export function MindNode({
   id,
@@ -12,66 +86,48 @@ export function MindNode({
   const editingSeed = useEditorStore((state) => state.editingSeed)
   const setEditing = useEditorStore((state) => state.setEditing)
   const updateText = useEditorStore((state) => state.updateText)
-  const [draft, setDraft] = useState(data.text)
-  const composing = useRef(false)
-  const input = useRef<HTMLInputElement>(null)
+  const root = useRef<HTMLDivElement>(null)
   const editing = editingId === id
-  useEffect(() => {
-    const frame = requestAnimationFrame(() =>
-      setDraft(editing && editingSeed !== null ? editingSeed : data.text),
-    )
-    return () => cancelAnimationFrame(frame)
-  }, [data.text, editing, editingSeed])
-  useEffect(() => {
-    if (!editing) return
-    if (editingSeed === null) input.current?.select()
-    else {
-      input.current?.focus()
-      input.current?.setSelectionRange(editingSeed.length, editingSeed.length)
-    }
-  }, [editing, editingSeed])
-  const commit = () => {
-    updateText(id, draft)
+  const commit = (value: string) => {
+    updateText(id, value)
     setEditing(null)
   }
+  useLayoutEffect(() => {
+    if (!selected || !data.note || !root.current) return
+    data.onNoteShow(id, data.note, root.current.getBoundingClientRect(), true)
+  }, [data, id, selected])
   return (
     <div
+      ref={root}
       className={`mind-node ${selected ? 'selected' : ''}`}
       onDoubleClick={() => setEditing(id)}
+      onMouseEnter={(event) => {
+        if (data.note)
+          data.onNoteShow(
+            id,
+            data.note,
+            event.currentTarget.getBoundingClientRect(),
+            selected,
+          )
+      }}
+      onMouseLeave={() => data.onNoteHide(id)}
     >
       <Handle type="target" position={Position.Left} className="node-handle" />
       {editing ? (
-        <input
-          ref={input}
-          className="node-input nodrag"
-          value={draft}
-          aria-label="ノードのテキスト"
-          onChange={(event) => setDraft(event.target.value)}
-          onCompositionStart={() => {
-            composing.current = true
-          }}
-          onCompositionEnd={() => {
-            composing.current = false
-          }}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (
-              event.key === 'Enter' &&
-              !composing.current &&
-              !event.nativeEvent.isComposing
-            ) {
-              event.preventDefault()
-              commit()
-            }
-            if (event.key === 'Escape') {
-              setDraft(data.text)
-              setEditing(null)
-            }
-          }}
+        <NodeTextEditor
+          initialValue={editingSeed ?? data.text}
+          seeded={editingSeed !== null}
+          onCommit={commit}
+          onCancel={() => setEditing(null)}
         />
       ) : (
         <span className="node-label">
           {data.text || <span className="empty-label">空のノード</span>}
+        </span>
+      )}
+      {data.note && (
+        <span className="node-note-indicator" aria-label="ノートあり">
+          N
         </span>
       )}
       <button
